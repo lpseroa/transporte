@@ -1,0 +1,644 @@
+//   Copyright (c) 2021-2023, HP Development Company, L.P. All rights reserved.
+//   This software contains confidential and proprietary information of HP.
+//   The user of this software agrees not to disclose, disseminate or copy
+//   such Confidential Information and shall use the software only in accordance
+//   with the terms of the license agreement the user entered into with HP.
+
+using System;
+using Microsoft.ReactNative.Managed;
+using System.Net.NetworkInformation;
+using Windows.Networking.Connectivity;
+using System.Collections.Generic;
+using Windows.Devices.WiFi;
+using Windows.Devices.Enumeration;
+using Windows.Foundation;
+using Windows.Security.Credentials;
+using Windows.Networking.NetworkOperators;
+using Windows.Networking;
+using Windows.Devices.Radios;
+using HPX.SDK.Modules.Logging;
+using HPX.SDK.RNBoilerplate;
+
+namespace HP.AppFramework.NetInfo
+{
+    [ReactModule]
+    class NetInfo
+    {
+        private string eventName = "hpaf.netInfo.networkStatusDidChange";
+        private string wifiEvent = "hpaf.netInfo.wifiEvent";
+        private string mobileEvent = "hpaf.netInfo.mobileEvent";
+        private string esimEvent = "hpaf.netInfo.esimEvent";
+        private string radioEvent = "hpaf.netInfo.radioEvent";
+        private string emitterName = "RCTDeviceEventEmitter";
+        private string esimModuleVisEvent = "hpaf.netInfo.esimModuleVisEvent";
+        private bool networkHandlerRegistered = false;
+        public WiFiAdapter WiFiAdapter { get; private set; }
+        public JSValueObject providerInformation { get; private set; }
+        public string cellGeneration { get; private set; }
+        public bool connectedValue { get; private set; }
+        private ReactContext reactContext;
+        IReadOnlyList<Radio> radios;
+
+        [ReactInitializer]
+        public void Initialize(ReactContext ctx)
+        {
+            reactContext = ctx;
+            if (!networkHandlerRegistered)
+            {
+                NetworkStatusChangedEventHandler cb = new NetworkStatusChangedEventHandler(NetworkStatusChangedHandler);
+                NetworkInformation.NetworkStatusChanged += cb;
+                networkHandlerRegistered = true;
+            }
+            ctx.Handle.UIDispatcher.Post(async () =>
+            {
+                radios = await Radio.GetRadiosAsync();
+            });
+        }
+
+        private void NetworkStatusChangedHandler(object sender)
+        {
+            try
+            {
+                JSValueObject result = GetNetworkInfo();
+                var connection = GetConnectedValue();
+                result["networkAvailable"] = connection;
+                reactContext.EmitJSEvent(emitterName, eventName, result);
+            }
+            catch (Exception e)
+            {
+                NativeLogger.HandleLog("@hp-af/react-native-netinfo", LogLevelEnum.ERROR, $"{nameof(NetworkStatusChangedHandler)}: NetInfo.NetworkStatusChangedHandler GetNetworkInfo ERROR: {e.Message}");
+            }
+        }
+
+        private void AvailableNetworksHandler(WiFiAdapter adapter, object sender)
+        {
+            try
+            {
+                JSValueObject result = new JSValueObject();
+                foreach (WiFiAvailableNetwork network in adapter.NetworkReport.AvailableNetworks)
+                {
+                    var test = network.Ssid;
+                }
+                // Parse the network report
+                reactContext.EmitJSEvent(wifiEvent, eventName, result);
+            }
+            catch (Exception e)
+            {
+                NativeLogger.HandleLog("@hp-af/react-native-netinfo", LogLevelEnum.ERROR, $"{nameof(AvailableNetworksHandler)}: NetInfo.AvailableNetworksHandler WiFiAvailableNetwork ERROR: {e.Message}");
+            }
+        }
+
+        [ReactMethod("fetch")]
+        public void Fetch(IReactPromise<JSValue> promise)
+        {
+            try
+            {
+                JSValueObject result = GetNetworkInfo();
+                promise.Resolve(result);
+            }
+            catch (Exception e)
+            {
+                ReactNativeBoilerplate.Reject("NetInfo.fetch GetNetworkInfo error", e, promise);
+            }
+        }
+
+        [ReactMethod("getNetworkUsageStates")]
+        public void GetNetworkUsageStates(IReactPromise<JSValueObject> promise)
+        {
+            try
+            {
+                NetworkUsageStates networkUsageStates = new NetworkUsageStates();
+                promise.Resolve();
+            }
+            catch (Exception e)
+            {
+                ReactNativeBoilerplate.Reject("NetInfo.getNetworkUsageStates error", e, promise);
+            }
+        }
+
+        [ReactMethod("getDataPlan")]
+        public void GetDataPlan(IReactPromise<JSValueObject> promise)
+        {
+            try
+            {
+                ConnectionProfile profile = NetworkInformation.GetInternetConnectionProfile();
+
+                DataPlanStatus dataPlan = profile.GetDataPlanStatus();
+                promise.Resolve();
+            }
+            catch (Exception e)
+            {
+                ReactNativeBoilerplate.Reject("NetInfo.getDataPlan error", e, promise);
+            }
+        }
+
+        [ReactMethod("getDataUsage")]
+        public async void GetDataUsage(IReactPromise<JSValue> promise)
+        {
+            try
+            {
+                ConnectionProfile profile = NetworkInformation.GetInternetConnectionProfile();
+                DateTime dt = DateTime.Now.AddDays(-30);
+                NetworkUsageStates networkUsageStates = new NetworkUsageStates();
+                IReadOnlyList<NetworkUsage> dataUsage = await profile.GetNetworkUsageAsync(dt, new DateTimeOffset(DateTime.Now), DataUsageGranularity.Total, networkUsageStates);
+                promise.Resolve((JSValueObject)dataUsage);
+            }
+            catch (Exception e)
+            {
+                ReactNativeBoilerplate.Reject("NetInfo.getDataUsage error", e, promise);
+            }
+        }
+
+        #region Wifi
+        [ReactMethod("disconnectWifi")]
+        public async void DisconnectWifi(IReactPromise<JSValue> promise)
+        {
+            try
+            {
+                IReadOnlyList<WiFiAdapter> wifiNetworks = await WiFiAdapter.FindAllAdaptersAsync();
+                foreach (WiFiAdapter network in wifiNetworks)
+                {
+                    network.Disconnect();
+                }
+                promise.Resolve(true);
+            }
+            catch (Exception e)
+            {
+                ReactNativeBoilerplate.Reject("NetInfo.disconnectWifi error", e, promise);
+            }
+        }
+
+        [ReactMethod("connectWifi")]
+        public async void ConnectWifi(string ssid, string userName, string password, IReactPromise<JSValue> promise)
+        {
+            try
+            {
+                IReadOnlyList<WiFiAdapter> wifiAdapters = await WiFiAdapter.FindAllAdaptersAsync();
+                foreach (WiFiAdapter wifiAdapter in wifiAdapters)
+                {
+                    foreach (WiFiAvailableNetwork network in wifiAdapter.NetworkReport.AvailableNetworks)
+                    {
+                        if (network.Ssid == ssid)
+                        {
+                            PasswordCredential credentials = new PasswordCredential();
+                            credentials.UserName = userName;
+                            credentials.Password = password;
+                            WiFiConnectionResult result = await wifiAdapter.ConnectAsync(network, WiFiReconnectionKind.Automatic, credentials);
+                            if (result.ConnectionStatus == WiFiConnectionStatus.Success)
+                            {
+                                promise.Resolve(true);
+                            }
+                        }
+                    }
+                }
+                promise.Resolve(false);
+            }
+            catch (Exception e)
+            {
+                ReactNativeBoilerplate.Reject("NetInfo.connectWifi error", e, promise);
+            }
+        }
+
+        [ReactMethod("getWifiNetworks")]
+        public async void getWifiNetworks(IReactPromise<JSValue> promise)
+        {
+            try
+            {
+                JSValueObject result = new JSValueObject();
+                IReadOnlyList<WiFiAdapter> wifiAdapters = await WiFiAdapter.FindAllAdaptersAsync();
+                foreach (WiFiAdapter adapter in wifiAdapters)
+                {
+                    // Intialize the handlers for live wifi network updates
+                    adapter.AvailableNetworksChanged += AvailableNetworksHandler;
+                }
+                promise.Resolve(true);
+            }
+            catch (Exception e)
+            {
+                ReactNativeBoilerplate.Reject("NetInfo.getWifiNetworks error", e, promise);
+            }
+        }
+
+        [ReactMethod("initializeWifiAdapters")]
+        public async void InitializeWifiAdapters(IReactPromise<JSValue> promise)
+        {
+            try
+            {
+                WiFiAccessStatus access = await WiFiAdapter.RequestAccessAsync();
+                if (access != WiFiAccessStatus.Allowed)
+                {
+                    throw new Exception("NetInfo.initializeWifiAdapter error: WiFiAccessStatus not allowed");
+                }
+                else
+                {
+                    DeviceInformationCollection wifiAdapterResults =
+                      await DeviceInformation.FindAllAsync(WiFiAdapter.GetDeviceSelector());
+                    if (wifiAdapterResults.Count >= 1)
+                    {
+                        promise.Resolve(true);
+                    }
+                    else
+                    {
+                        promise.Resolve(false);
+                    }
+
+                }
+            }
+            catch (Exception e)
+            {
+                ReactNativeBoilerplate.Reject("NetInfo.initializeWifiAdapters error", e, promise);
+            }
+        }
+        #endregion
+
+        #region ESim/Sim
+        [ReactMethod("getMobileNetworkProfileData")]
+        public async void GetMobileNetworkProfileData(IReactPromise<JSValue> promise)
+        {
+            try
+            {
+                JSValueObject[] result;
+                IReadOnlyList<string> accountIds = MobileBroadbandAccount.AvailableNetworkAccountIds;
+                if (accountIds.Count > 0)
+                {
+                    // Once we can determine there are mobile accounts associated with the device we can get the specific connection profiles for those accounts
+                    MobileBroadbandAccount mobileBroadbandAccount = MobileBroadbandAccount.CreateFromNetworkAccountId(accountIds[0]);
+                    IReadOnlyList<ConnectionProfile> profiles = mobileBroadbandAccount.GetConnectionProfiles();
+                    if (profiles.Count > 0)
+                    {
+                        result = new JSValueObject[profiles.Count];
+                        NetworkUsageStates networkUsageStates = new NetworkUsageStates();
+                        DateTime dt = DateTime.Now.AddDays(-30);
+                        int index = 0;
+                        foreach (ConnectionProfile profile in profiles)
+                        {
+                            IReadOnlyList<ProviderNetworkUsage> usage = await profile.GetProviderNetworkUsageAsync(dt, new DateTimeOffset(DateTime.Now), networkUsageStates);
+                            ConnectionCost cost = profile.GetConnectionCost();
+                            result[index] = new JSValueObject();
+                            result[index]["providerName"] = mobileBroadbandAccount.ServiceProviderName;
+                            result[index]["signalStrength"] = (int)profile.GetSignalBars();
+                            result[index]["connectivityLevel"] = (int)profile.GetNetworkConnectivityLevel();
+                            result[index]["received"] = usage[0].BytesReceived;
+                            result[index]["sent"] = usage[0].BytesSent;
+                            result[index]["profileName"] = profile.ProfileName;
+                            result[index]["encryptionType"] = (int)profile.NetworkSecuritySettings.NetworkEncryptionType;
+                            result[index]["domainConnectivityLevel"] = (int)profile.GetDomainConnectivityLevel();
+                            result[index]["providerGuid"] = profile.ServiceProviderGuid.Value.ToString();
+                            result[index]["nearDataLimit"] = cost.ApproachingDataLimit;
+                            result[index]["roaming"] = cost.Roaming;
+                            result[index]["netCostType"] = (int)cost.NetworkCostType;
+                            result[index]["deviceType"] = (int)mobileBroadbandAccount.CurrentDeviceInformation.DeviceType;
+                            result[index]["ipType"] = (int)profile.WwanConnectionProfileDetails.IPKind;
+                            result[index]["dataClass"] = (int)profile.WwanConnectionProfileDetails.GetCurrentDataClass();
+                            index++;
+                        }
+                        reactContext.EmitJSEvent(emitterName, mobileEvent, result);
+                        promise.Resolve(true);
+                    }
+                    else
+                    {
+                        throw new Exception("NetInfo.getEsimData: No mobile broadband profiles");
+                    }
+                }
+                else
+                {
+                    throw new Exception("NetInfo.getEsimData: No mobile broadband accounts");
+                }
+            }
+            catch (Exception e)
+            {
+                ReactNativeBoilerplate.Reject("NetInfo.getEsimData error", e, promise);
+            }
+        }
+        private void Radio_StateChanged(Radio radio, object args)
+        {
+            reactContext.EmitJSEvent(emitterName, radioEvent, radio.State == RadioState.On);
+        }
+
+        public  bool GetConnectedValue()
+        {
+            return connectedValue;
+        }
+
+        [ReactMethod("enumerateEsim")]
+        public async void EnumerateEsim(IReactPromise<JSValue> promise)
+        {
+            try {
+                ESimWatcher eSimWatcher = ESimManager.TryCreateESimWatcher();
+                eSimWatcher.Added += new TypedEventHandler<ESimWatcher, ESimAddedEventArgs>(async (watcher, data) => {
+                    ESim eSim = data.ESim;
+                    var profiles = data.ESim.GetProfiles();
+                    foreach (var profile in profiles)
+                    {
+                        if (profile.ProviderName == "T-Mobile")
+                        {
+                            var profileEnableAsync = await profile.EnableAsync();
+                            IReadOnlyList<ConnectionProfile> conProfs = NetworkInformation.GetConnectionProfiles();
+                            var result = new JSValueObject();
+                            long totalUsage = 0;
+                            foreach (var prof in conProfs)
+                            {
+                                if (prof.IsWwanConnectionProfile == true)
+                                {
+                                    DateTime dt = DateTime.Now.AddDays(-30);
+                                    var states = new NetworkUsageStates
+                                    { Roaming = TriStates.DoNotCare, Shared = TriStates.DoNotCare };
+                                    var now = DateTime.Now;
+                                    var usage = await prof.GetProviderNetworkUsageAsync(now.AddDays(-30), now, states);
+                                    var pId = "";
+                                    long bs = 0;
+                                    long br = 0;
+
+                                    foreach (var u in usage)
+                                    {
+                                        pId = u.ProviderId;
+                                        bs += (long)u.BytesSent;
+                                        br += (long)u.BytesReceived;
+                                        totalUsage += bs + br;
+                                    }
+
+                                    ConnectionCost cost = prof.GetConnectionCost();
+                                    var signal = prof.GetSignalBars();
+                                    WwanDataClass profileDataClass = prof.WwanConnectionProfileDetails.GetCurrentDataClass();
+                                    cellGeneration = profileDataClass.ToString();
+                                    if (signal != null)
+                                    {
+                                        result["signalStrength"] = (int)signal;
+                                    }
+                                    else
+                                    {
+                                        result["signalStrength"] = -1;
+                                    }
+                                    result["connectivityLevel"] = (int)prof.GetNetworkConnectivityLevel();
+                                    if (usage.Count > 0)
+                                    {
+                                        result["received"] = (int)usage[0].BytesReceived;
+                                        result["sent"] = usage[0].BytesSent;
+                                    }
+                                    else
+                                    {
+                                        result["received"] = -1;
+                                    }
+                                    result["profName"] = prof.ProfileName;
+                                    result["providerName"] = profile.ProviderName;
+                                    result["nickName"] = profile.Nickname;
+                                    result["encryptionType"] = (int)prof.NetworkSecuritySettings.NetworkEncryptionType;
+                                    result["domainConnectivityLevel"] = (int)prof.GetDomainConnectivityLevel();
+                                    result["nearDataLimit"] = cost.ApproachingDataLimit;
+                                    result["roaming"] = cost.Roaming;
+                                    result["totalCellularUsage"] = totalUsage;
+                                    result["netCostType"] = (int)cost.NetworkCostType;
+                                    result["ipType"] = (int)prof.WwanConnectionProfileDetails.IPKind;
+                                    result["dataClass"] = (int)prof.WwanConnectionProfileDetails.GetCurrentDataClass();
+                                    
+                                    if (prof.GetNetworkConnectivityLevel() == NetworkConnectivityLevel.InternetAccess)
+                                    {
+                                        result["connected"] = true;
+                                        connectedValue = true;
+                                    }
+                                }
+                            }
+                            providerInformation = result;
+                            reactContext.EmitJSEvent(emitterName, esimEvent, result);
+                        }
+                    }
+                    
+                    // initialize event for radio state changes
+                    foreach (Radio radio in radios)
+                    {
+                        if (radio.Name == "Cellular" && radio.Kind == RadioKind.MobileBroadband)
+                        {                            
+                            reactContext.EmitJSEvent(emitterName, esimModuleVisEvent, true);
+                            radio.StateChanged += Radio_StateChanged;
+                        }
+                    }
+                });
+
+                eSimWatcher.Start();
+                promise.Resolve(true);
+            } 
+            catch (Exception e)
+            {
+                ReactNativeBoilerplate.Reject("NetInfo.EnumerateEsim error", e, promise);
+            }
+        }
+
+
+        [ReactMethod("getConnectionStatus")]
+        public async void GetConnectionStatus(IReactPromise<JSValue> promise)
+        {
+            promise.Resolve(connectedValue);
+        }
+
+        [ReactMethod("getProviderInformation")]
+        public async void GetProviderInformation(IReactPromise<JSValue> promise)
+        {
+            promise.Resolve(providerInformation);
+        }
+
+        [ReactMethod("getCellGeneration")]
+        public async void GetCellGeneration(IReactPromise<JSValue> promise)
+        {
+            promise.Resolve(cellGeneration);
+        }
+
+        #endregion
+
+        #region tethering
+        [ReactMethod("getValidTethers")]
+        public async void GetValidTethers(IReactPromise<JSValueObject> promise)
+        {
+            try
+            {
+                IReadOnlyList<ConnectionProfile> profiles = NetworkInformation.GetConnectionProfiles();
+                JSValueObject result = new JSValueObject();
+                int index = 0;
+                foreach (ConnectionProfile profile in profiles)
+                {
+                    TetheringCapability enabled = NetworkOperatorTetheringManager.GetTetheringCapabilityFromConnectionProfile(profile);
+                    if (enabled == TetheringCapability.Enabled)
+                    {
+                        if(profile.GetNetworkConnectivityLevel() == NetworkConnectivityLevel.InternetAccess)
+                        {
+                            result[$"{index}"] = profile.ProfileName;
+                            index++;
+                        }
+                    }
+                }
+                promise.Resolve(result);
+            }
+            catch (Exception e)
+            {
+                ReactNativeBoilerplate.Reject("NetInfo.getValidTethers error", e, promise);
+            }
+        }
+
+        [ReactMethod("setNetworkTether")]
+        public async void SetNetworkTether(string name, bool enable, IReactPromise<JSValue> promise)
+        {
+            try
+            {
+                IReadOnlyList<ConnectionProfile> profiles = NetworkInformation.GetConnectionProfiles();
+                foreach (ConnectionProfile profile in profiles)
+                {
+                    TetheringCapability enabled = NetworkOperatorTetheringManager.GetTetheringCapabilityFromConnectionProfile(profile);
+                    if (enabled == TetheringCapability.Enabled)
+                    {
+                        if (profile.ProfileName == name && profile.GetNetworkConnectivityLevel() == NetworkConnectivityLevel.InternetAccess)
+                        {
+                            var manager = NetworkOperatorTetheringManager.CreateFromConnectionProfile(profile);
+                            NetworkOperatorTetheringOperationResult result;
+                            if (enable)
+                            {
+                                result = await manager.StartTetheringAsync();
+                            } else
+                            {
+                                result = await manager.StopTetheringAsync();
+                            }
+                            if (result.Status == TetheringOperationStatus.Success)
+                            {
+                                promise.Resolve(true);
+                            }
+                            else
+                            {
+                                promise.Resolve(false);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                ReactNativeBoilerplate.Reject("NetInfo.setNetworkTether error", e, promise);
+            }
+        }
+
+        [ReactMethod("configureAccessPoint")]
+        public async void ConfigureAccessPoint(string password, IReactPromise<JSValue> promise)
+        {
+            try
+            {
+                IReadOnlyList<ConnectionProfile> profiles = NetworkInformation.GetConnectionProfiles();
+                foreach (ConnectionProfile profile in profiles)
+                {
+                    TetheringCapability enabled = NetworkOperatorTetheringManager.GetTetheringCapabilityFromConnectionProfile(profile);
+                    if (enabled == TetheringCapability.Enabled)
+                    {
+                        if (profile.ProfileName.Length > 0 && profile.GetNetworkConnectivityLevel() == NetworkConnectivityLevel.InternetAccess)
+                        {
+                            var manager = NetworkOperatorTetheringManager.CreateFromConnectionProfile(profile);
+                            var info = new NetworkOperatorTetheringAccessPointConfiguration();
+                            info.Ssid = profile.ProfileName;
+                            info.Passphrase = password;
+                            await manager.ConfigureAccessPointAsync(info);
+                            promise.Resolve(true);
+                        }
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                ReactNativeBoilerplate.Reject("NetInfo.configureAccessPoint error", e, promise);
+            }
+        }
+        #endregion
+
+        [ReactMethod("setRadioState")]
+        public async void SetRadioState(RadioState status, RadioKind kind, IReactPromise<JSValue> promise)
+        {
+            try
+            {
+                foreach (Radio radio in radios)
+                {
+                    if (radio.Kind == kind)
+                    {
+                        await radio.SetStateAsync(status);
+                        promise.Resolve(true);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                ReactNativeBoilerplate.Reject("NetInfo.setCellularRadioState error", e, promise);
+            }
+        }
+
+        [ReactMethod("getRadioState")]
+        public async void GetRadioState(RadioKind kind, IReactPromise<JSValue> promise)
+        {
+            try
+            {
+                foreach (Radio radio in radios)
+                {
+                    if (radio.Kind == kind)
+                    {
+                        promise.Resolve((int)radio.State);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                ReactNativeBoilerplate.Reject("NetInfo.setCellularRadioState error", e, promise);
+            }
+        }
+
+
+        private JSValueObject GetNetworkInfo()
+        {
+            JSValueObject state = new JSValueObject();
+            try
+            {
+                ConnectionProfile profile = NetworkInformation.GetInternetConnectionProfile();
+                bool connectedToNetwork = NetworkInterface.GetIsNetworkAvailable();
+                state["isConnected"] = connectedToNetwork;
+
+                if (connectedToNetwork)
+                {
+                    state["ipAddress"] = GetIpAddressSync();
+                    JSValueObject details = new JSValueObject();
+
+                    bool isWifiConnection = profile.IsWlanConnectionProfile;
+                    if (isWifiConnection)
+                    {
+                        string ssid = profile.WlanConnectionProfileDetails.GetConnectedSsid();
+                        details["ssid"] = ssid;
+                    }
+
+                    state["details"] = details;
+                }
+
+                return state;
+            }
+            catch (Exception e)
+            {
+                NativeLogger.HandleLog("@hp-af/react-native-netinfo", LogLevelEnum.ERROR, $"{nameof(GetNetworkInfo)}: NetInfo.JSValueObject GetNetworkInfo ERROR: {e.Message}");
+                return state;
+            }
+        }
+
+        private string GetIpAddressSync()
+        {
+            ConnectionProfile icp = NetworkInformation.GetInternetConnectionProfile();
+            if (icp == null || icp.NetworkAdapter == null)
+            {
+                return "unknown";
+            }
+            else
+            {
+                IReadOnlyList<HostName> hostnames = NetworkInformation.GetHostNames();
+                foreach (HostName hostname in hostnames)
+                {
+                    if (
+                        hostname.Type == Windows.Networking.HostNameType.Ipv4 &&
+                        hostname.IPInformation != null &&
+                        hostname.IPInformation.NetworkAdapter != null &&
+                        hostname.IPInformation.NetworkAdapter.NetworkAdapterId == icp.NetworkAdapter.NetworkAdapterId)
+                    {
+                        return hostname.CanonicalName;
+                    }
+                }
+                return "unknown";
+            }
+        }
+    }
+}

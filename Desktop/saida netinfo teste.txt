@@ -1,0 +1,198 @@
+===============================================
+Assynchonous Processing Tests
+===============================================
+
++ TESTE 0.1 +++++++++++++++++++++++++++++++
+testMethod Synchronously
++++++++++++++++++++++++++++++++++++++++++
+
+Response TIME: 734 miliseconds
+Error Code:    0
+Error Message: No Error
+
+->TESTE 0.2 .............................
+testMethod with Asynchronous Acess with standard thread method
+.........................................
+Response TIME: 780 miliseconds
+Error Code:    0
+Error Message: No Error
+
+->TESTE 0.3 .............................
+testMethod with Asynchronous Acess with future and Promise
+.........................................
+Response TIME: 698 miliseconds
+Error Code:    0
+Error Message: No Error
+
+->TESTE 0.4 .............................
+testMethod with Asynchronous Acess with boost thread method
+.........................................
+Response TIME: 764 miliseconds
+Error Code:    0
+Error Message: No Error
+
++ TESTE 1 +++++++++++++++++++++++++++++++
+CheckFunction Function
++++++++++++++++++++++++++++++++++++++++++
+
+->TESTE 1.1 .............................
+Synchronous Acess
+.........................................
+Returned:RUNNING CheckFunction
+Response TIME: 0 miliseconds
+
+->TESTE 1.2 .............................
+Asynchronous Acess with standard thread method
+.........................................
+Returned: RUNNING CheckFunction
+Response TIME: 2 miliseconds
+
+->TESTE 1.3 .............................
+Asynchronous Acess with future and Promise
+.........................................
+Returned: RUNNING CheckFunction
+Response TIME: 4 miliseconds
+
+->TESTE 1.4 .............................
+Boost Assynchronous Acess
+.........................................
+Returned: RUNNING CheckFunction
+Response TIME: 1 miliseconds
+
++ TESTE 2 +++++++++++++++++++++++++++++++
+Fetch Function
++++++++++++++++++++++++++++++++++++++++++
+
+->TESTE 2.1 .............................
+Fetch Synchronously
+.........................................
+Response TIME: 56 miliseconds
+Error Code:    0
+Error Message: No error
+ip - 192.168.15.105
+ssid - cdtijucaQ-5G
+
+->TESTE 2.2 .............................
+Fetch with Asynchronous Acess with standard thread method
+.........................................
+Response TIME: 25 miliseconds
+Error Code:    0
+Error Message: No error
+ip - 192.168.15.105
+ssid - cdtijucaQ-5G
+
+->TESTE 2.3 .............................
+Fetch with Asynchronous Acess with future and Promise
+.........................................
+Response TIME: 29 miliseconds
+Error Code:    0
+Error Message: No error
+ip - 192.168.15.105
+ssid - cdtijucaQ-5G
+
+->TESTE 2.4 .............................
+Fetch with Asynchronous Acess with boost thread method
+.........................................
+Response TIME: 28 miliseconds
+Error Code:    0
+Error Message: No error
+ip - 192.168.15.105
+ssid - cdtijucaQ-5G
+
++ TESTE 3 +++++++++++++++++++++++++++++++
+GetDataUsage Function
++++++++++++++++++++++++++++++++++++++++++
+
+->TESTE 3.1 .............................
+GetDataUsage Synchronously
+.........................................
+Response TIME: 5 miliseconds
+Error Code:    0
+Error Message: No Error
+inOctets - 1324717
+outOctets - 1226198
+...
+inOctets - 1324717
+outOctets - 1226198
+
+->TESTE 3.2 .............................
+GetDataUsage with Asynchronous Acess with standard thread method
+.........................................
+Response TIME: 7 miliseconds
+Error Code:    0
+Error Message: No Error
+inOctets - 1324717
+outOctets - 1226198
+...
+inOctets - 1324717
+outOctets - 1226198
+
+->TESTE 3.3 .............................
+GetDataUsage with Asynchronous Acess with future and Promise
+.........................................
+Response TIME: 7 miliseconds
+Error Code:    0
+Error Message: No Error
+inOctets - 1324871
+outOctets - 1226275
+...
+inOctets - 1324871
+outOctets - 1226275
+
+->TESTE 3.4 .............................
+GetDataUsage with Boost Thread Acess
+.........................................
+Response TIME: 7 miliseconds
+Error Code:    0
+Error Message: No Error
+inOctets - 1324997
+outOctets - 1226275
+...
+inOctets - 1324997
+outOctets - 1226275
+
++ TESTE 4 +++++++++++++++++++++++++++++++
+DisconnectWifi Function
++++++++++++++++++++++++++++++++++++++++++
+
+->TESTE 4.1 .............................
+DisconnectWifi Synchronously
+.........................................
+Response TIME: 1 miliseconds
+Error Code:     0
+Error  Message: No Error
+
+
++ TESTE 5 +++++++++++++++++++++++++++++++
+ConnectWifi Function
++++++++++++++++++++++++++++++++++++++++++
+
+->TESTE 5.1 .............................
+ConnectWifi Synchronously
+.........................................
+Response TIME: 3493 miliseconds
+Error Code:    0
+Error Message: No Errors
+
+->TESTE 5.2 .............................
+ConnectWifi with Asynchronous Acess with standard thread method
+.........................................
+Response TIME: 3110 miliseconds
+Error Code:    0
+Error Message: No Errors
+
+->TESTE 5.3 .............................
+ConnectWifi with Asynchronous Acess with future and Promise
+.........................................
+Response TIME: 3056 miliseconds
+Error Code:    0
+Error Message: No Errors
+
+->TESTE 5.4 .............................
+ConnectWifi with Asynchronous Boost Thread
+.........................................
+Response TIME: 3048 miliseconds
+Error Code:    0
+Error Message: No Errors
+
+###############################
